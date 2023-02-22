@@ -23,12 +23,12 @@ blueprint:
           domain: sensor
           # device_class: weight
 
-    impedance_entity:
-      name: impedance sensor (option)
-      description: "인피던스 센서 (선택사항)"
-      selector:
-        entity:
-          domain: sensor
+    # impedance_entity:
+      # name: impedance sensor (option)
+      # description: "인피던스 센서 (선택사항)"
+      # selector:
+        # entity:
+          # domain: sensor
 
     user_entities:
       name: input_number Weight User entities
@@ -55,8 +55,8 @@ blueprint:
       default: 20
       selector:
         number:
-          min: 10
-          max: 40
+          min: 1
+          max: 10
           step: 1
           unit_of_measurement: "kg"
 
@@ -67,7 +67,7 @@ trigger:
 variables:
   weight_entity: !input weight_entity
   weight: "{{ states(weight_entity)|float }}"
-  impedance_entity: !input impedance_entity
+  # impedance_entity: !input impedance_entity
   user_entities: !input user_entities
   weight_distinction: !input weight_distinction
   min_weight: !input min_weight
@@ -84,7 +84,7 @@ variables:
       {% endif %}
     {% endfor %}
     {{ r.user }}
-  user_impedance_entity: '{{ user_weight_entity.replace("weight","impedance") }}'
+  # user_impedance_entity: '{{ user_weight_entity.replace("weight","impedance") }}'
 
 condition:
   - condition: numeric_state
@@ -98,14 +98,14 @@ action:
     data:
       value: "{{ trigger.to_state.state }}"
 
-  - if:
-      - condition: template
-        value_template: '{{ impedance_entity != "" }}'
-    then:
-      - service: input_number.set_value
-        target:
-          entity_id: "{{user_impedance_entity}}"
-        data:
-          value: "{{ states(impedance_entity) }}"
+  # - if:
+  #    - condition: template
+  #      value_template: '{{ impedance_entity != "" }}'
+  #  then:
+  #    - service: input_number.set_value
+  #      target:
+  #        entity_id: "{{user_impedance_entity}}"
+  #      data:
+  #        value: "{{ states(impedance_entity) }}"
 
 mode: parallel
