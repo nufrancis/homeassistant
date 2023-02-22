@@ -1,5 +1,6 @@
 blueprint:
   domain: automation
+  source_url: https://github.com/dugurs/homeassistant/blob/main/blueprints/automation/bodyscale_user_selector/bodyscale_user_selector.yaml
   name: "Body Scale User Selector"
   description:
     "측정된 체중을 비슷한 체중의 사용자로 선택해 업데이트 해 줍니다.\n
