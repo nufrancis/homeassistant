@@ -1,0 +1,269 @@
+blueprint:
+  name: "Toilet fan Automation 2"
+  description: "v2.2.1"
+  domain: automation
+  # source_url: ""
+
+  input:
+    toilet_fan:
+      name: "Toilet fan"
+      description: ""
+      selector:
+        entity:
+          domain: fan
+    toilet_light:
+      name: "Toilet light"
+      description: ""
+      selector:
+        entity:
+          domain: light
+    humidity_in:
+      name: "Toilet humidity sensor"
+      description: "sensor inside the toilet"
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+    humidity_out:
+      name: "comparative humidity sensor"
+      description: "sensor outside the toilet"
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+    trigger_over_humidity:
+      name: "fan Auto On Off Reference Humidity"
+      description:
+        "When the humidity in the toilet is higher than the set humidity, the ventilation fan is automatically turned on. (and when the humidity difference is satisfied)\n
+        When the humidity in the toilet is below the set humidity, the ventilation fan is automatically turned off. (and off when the humidity difference is satisfied)\n
+        If the fan's maximum operation time is set to 1 or more, automatic turn-on is disabled."
+      default: 70
+      selector:
+        number:
+          min: 50
+          max: 90
+          unit_of_measurement: "%"
+    fan_on_humidity:
+      name: "Turn on fan if the humidity difference"
+      description: "Turn on the fan if the humidity difference between the two sensors is greater than the setting."
+      default: 30
+      selector:
+        number:
+          min: 5
+          max: 50
+          unit_of_measurement: "%"
+    fan_off_humidity:
+      name: "Turn off fan if the humidity difference"
+      description: "Turn off the fan when the humidity difference between the two sensors is less than the setting."
+      default: 20
+      selector:
+        number:
+          min: 5
+          max: 50
+          unit_of_measurement: "%"
+    fan_off_time_max:
+      name: "fan maximum run time"
+      description:
+        "Set the maximum fan operation time after turning off the lights.\n
+        Disable when set to 0.\n
+        Disable auto turn on when set to 1 or higher"
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 120
+          unit_of_measurement: "minute"
+    fan_off_time_min:
+      name: "fan minimum run time"
+      description:
+        "Set the minimum fan operation time after turning off the lights.\n
+        Disable when set to 0"
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 60
+          unit_of_measurement: "minute"
+    fan_off_time_min_if:
+      name: "fan minimum run time conditions"
+      description:
+        "If more than the set time elapses after the light is turned on, the minimum operation time is used.\n
+        Disable when set to 0"
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 60
+          unit_of_measurement: "minute"
+
+trigger:
+  - platform: state
+    entity_id: !input toilet_light
+    to: "on"
+    id: lightOn
+  - platform: state
+    entity_id: !input toilet_light
+    to: "off"
+    id: lightOff
+  - platform: state
+    entity_id: !input toilet_light
+    to: "off"
+    for:
+      minutes: !input fan_off_time_min
+    id: offTimeMin
+  - platform: state
+    entity_id: !input toilet_light
+    to: "off"
+    for:
+      minutes: !input fan_off_time_max
+    id: offTimeMax
+  - platform: state
+    entity_id: !input humidity_in
+    id: changHumidtyIn
+  - platform: state
+    entity_id: !input humidity_out
+    id: changHumidtyOut
+  - platform: time_pattern
+    minutes: /1
+    id: timePattern
+
+variables:
+  toilet_fan: !input toilet_fan
+  toilet_light: !input toilet_light
+  humidity_in: !input humidity_in
+  humidity_out: !input humidity_out
+  fan_on_humidity: !input fan_on_humidity
+  fan_off_humidity: !input fan_off_humidity
+  trigger_over_humidity: !input trigger_over_humidity
+  fan_off_time_max: !input fan_off_time_max
+  fan_off_time_min: !input fan_off_time_min
+  fan_off_time_min_if: !input fan_off_time_min_if
+
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: lightOn
+          - condition: state
+            entity_id: !input toilet_fan
+            state: "off"
+        sequence:
+          - service: fan.turn_on
+            target:
+              entity_id: !input toilet_fan
+
+      - conditions:
+          - condition: trigger
+            id: lightOff
+          - condition: state
+            entity_id: !input toilet_fan
+            state: "on"
+          - condition: template
+            value_template: "{{ float(states[humidity_in].state) < trigger_over_humidity or float(states[humidity_in].state) - float(states[humidity_out].state) <= fan_off_humidity }}"
+          - condition: template
+            value_template: "{{ fan_off_time_min == 0 or ( now().timestamp() - trigger.from_state.last_changed.timestamp() ) / 60 < fan_off_time_min_if }}"
+        sequence:
+          - service: fan.turn_off
+            target:
+              entity_id: !input toilet_fan
+
+      - conditions:
+          - condition: trigger
+            id: offTimeMin
+          - condition: state
+            entity_id: !input toilet_fan
+            state: "on"
+          - condition: template
+            value_template: "{{ float(states[humidity_in].state) < trigger_over_humidity or float(states[humidity_in].state) - float(states[humidity_out].state) <= fan_off_humidity }}"
+          - condition: template
+            value_template: "{{ fan_off_time_min > 0 }}"
+        sequence:
+          - service: fan.turn_off
+            target:
+              entity_id: !input toilet_fan
+
+      - conditions:
+          - condition: trigger
+            id: offTimeMax
+          - condition: state
+            entity_id: !input toilet_fan
+            state: "on"
+          - condition: template
+            value_template: "{{ fan_off_time_max > 0 }}"
+        sequence:
+          - service: fan.turn_off
+            target:
+              entity_id: !input toilet_fan
+
+      - conditions:
+          - condition: trigger
+            id:
+              - timePattern
+              - changHumidtyIn
+              - changHumidtyOut
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input toilet_fan
+                    state: "off"
+                  - condition: template
+                    value_template: "{{ float(states[humidity_in].state) >= trigger_over_humidity }}"
+                  - condition: template
+                    value_template: "{{ float(states[humidity_in].state) - float(states[humidity_out].state) >= fan_on_humidity }}"
+                  - condition: template
+                    value_template: "{{ fan_off_time_max == 0 }}"
+                sequence:
+                  - service: fan.turn_on
+                    target:
+                      entity_id: !input toilet_fan
+
+              - conditions:
+                  - condition: state
+                    entity_id: !input toilet_fan
+                    state: "on"
+                  - condition: state
+                    entity_id: !input toilet_light
+                    state: "off"
+                  - condition: template
+                    value_template: "{{ fan_off_time_max > 0 and ( now().timestamp() - states[toilet_fan].last_changed.timestamp() ) / 60 >= fan_off_time_max }}"
+                sequence:
+                  - service: fan.turn_off
+                    target:
+                      entity_id: !input toilet_fan
+
+              - conditions:
+                  - condition: state
+                    entity_id: !input toilet_fan
+                    state: "on"
+                  - condition: state
+                    entity_id: !input toilet_light
+                    state: "off"
+                  - condition: template
+                    value_template: "{{ float(states[humidity_in].state) - float(states[humidity_out].state) <= fan_off_humidity }}"
+                  - condition: template
+                    value_template: "{{ fan_off_time_min == 0 or ( states[toilet_light].last_changed.timestamp() - states[toilet_fan].last_changed.timestamp() ) / 60 <= fan_off_time_min_if }}"
+                sequence:
+                  - service: fan.turn_off
+                    target:
+                      entity_id: !input toilet_fan
+
+              - conditions:
+                  - condition: state
+                    entity_id: !input toilet_fan
+                    state: "on"
+                  - condition: state
+                    entity_id: !input toilet_light
+                    state: "off"
+                  - condition: template
+                    value_template: "{{ float(states[humidity_in].state) - float(states[humidity_out].state) <= fan_off_humidity }}"
+                  - condition: template
+                    value_template: "{{ ( now().timestamp() - states[toilet_light].last_changed.timestamp() ) / 60 >= fan_off_time_min }}"
+                sequence:
+                  - service: fan.turn_off
+                    target:
+                      entity_id: !input toilet_fan
+            default: []
+    default: []
+mode: queued
+max_exceeded: silent

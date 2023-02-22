@@ -1,0 +1,83 @@
+blueprint:
+  name: "Xiaomi FP1 region sensor"
+  description: "1.1"
+  domain: automation
+
+  input:
+    presence:
+      name: "FP1 Presence binary_sensor"
+      selector:
+        entity:
+          domain: binary_sensor
+          device_class: presence
+    action:
+      name: "FP1 Action Sensor"
+      selector:
+        entity:
+          domain: sensor
+    input_boolean:
+      name: "input boolean"
+      description: "set state"
+      selector:
+        entity:
+          domain: input_boolean
+    region:
+      name: "region id"
+      description: "region upsert id"
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 10
+
+trigger_variables:
+  presence: !input presence
+trigger:
+  - platform: state
+    entity_id: !input action
+    id: taction
+  - platform: template
+    value_template: "{{ states[presence].state == 'off' }}"
+    id: tpresence
+
+variables:
+  region: !input region
+
+condition:
+  - condition: template
+    value_template: "{{ not trigger.to_state.state in ['unavailable', 'unknown', 'None', '', Null] }}"
+
+action:
+  - variables:
+      tostate: "{{ trigger.to_state.state }}"
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: taction
+          - condition: template
+            value_template: "{{ tostate.split('_')[1]|int == region }}"
+          - condition: template
+            value_template: "{{ tostate.split('_')[2] in ['occupied', 'enter', 'leave','unoccupied'] }}"
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ tostate.split('_')[2] in ['occupied', 'enter'] }}"
+            then:
+              - service: input_boolean.turn_on
+                target:
+                  entity_id: !input input_boolean
+            else:
+              - delay: 00:00:03
+              - service: input_boolean.turn_off
+                target:
+                  entity_id: !input input_boolean
+      - conditions:
+          - condition: trigger
+            id: tpresence
+        sequence:
+          - service: input_boolean.turn_off
+            target:
+              entity_id: !input input_boolean
+    default: []
+
+mode: restart

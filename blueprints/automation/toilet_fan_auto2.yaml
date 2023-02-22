@@ -1,0 +1,290 @@
+blueprint:
+  name: "화장실 환풍기 자동 2"
+  description: "v2.3"
+  domain: automation
+  # source_url: ""
+
+  input:
+    toilet_fan:
+      name: "화장실 환풍기"
+      description: ""
+      selector:
+        entity:
+          domain: fan
+    toilet_light:
+      name: "화장실 등"
+      description: ""
+      selector:
+        entity:
+          domain: light
+    humidity_in:
+      name: "화장실 습도 센서"
+      description: "화장실 안쪽 센서"
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+    humidity_out:
+      name: "화장실 비교 습도 센서"
+      description: "화장실 바깥쪽 센서"
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+    trigger_over_humidity:
+      name: "환풍기 자동 켜기 끄기 기준 습도"
+      description: "화장실 습도가 설정습도 이상 일때 자동으로 환풍기가 켜집니다. (and 켜기 습도차 만족시)\n
+      화장실 습도가 설정습도 이하 일때 자동으로 환풍기가 꺼집니다. (and 끄기 습도차 만족시)\n
+      환풍기 최대 가동 시간은 1이상 설정시 자동켜기는 비활성화 됩니다."
+      default: 70
+      selector:
+        number:
+          min: 50
+          max: 90
+          unit_of_measurement: "%"
+    fan_on_humidity:
+      name: "환풍기 켜기 습도차"
+      description: "두 센서의 습도 차이가 설정 보다 크면 환풍기를 켭니다."
+      default: 30
+      selector:
+        number:
+          min: 5
+          max: 50
+          unit_of_measurement: "%"
+    fan_off_humidity:
+      name: "환풍기 끄기 습도차"
+      description: "두 센서의 습도 차이가 설정 보다 작으면 환풍기를 끕니다."
+      default: 20
+      selector:
+        number:
+          min: 5
+          max: 50
+          unit_of_measurement: "%"
+    fan_off_time_max:
+      name: "환풍기 최대 가동 시간"
+      description: "등을 끈 후 환풍기 가동 최대 시간을 설정 합니다.\n0으로 설정시 비활성화.\n1이상 설정시 자동켜기 비활성화"
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 120
+          unit_of_measurement: "분"
+    fan_off_time_min:
+      name: "환풍기 최소 가동 시간 (환기용)"
+      description: "등을 끈 후 환풍기 가동 최소 시간을 설정 합니다.\n0으로 설정시 비활성화"
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 60
+          unit_of_measurement: "분"
+    fan_off_time_min_if:
+      name: "환풍기 최소 가동 시간 조건"
+      description: "등이 켜진 후 설정시간 이상 경과시 최소 가동 시간을 사용합니다.\n0으로 설정시 비활성화"
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 60
+          unit_of_measurement: "분"
+    fan_auto_on_time_after:
+      name: "환풍기 자동 켜기 시작 시간"
+      description: "부터\n
+        끝 시간 보다 클 수 없습니다.\n
+        자동 켜기 조건이 만족할때 유효합니다."
+      default: "8:00:00"
+      selector:
+        time:
+    fan_auto_on_time_before:
+      name: "환풍기 자동 켜기 끝 시간"
+      description: "까지\n
+        시작 시간 보다 작을 수 없습니다.\n
+        자동 켜기 조건이 만족할때 유효합니다."
+      default: "21:00:00"
+      selector:
+        time:
+
+trigger:
+  - platform: state # 등 켜면
+    entity_id: !input toilet_light
+    to: "on"
+    id: lightOn
+  - platform: state # 등 끄면
+    entity_id: !input toilet_light
+    to: "off"
+    id: lightOff
+  - platform: state # 등 끄고 최소 시간 지나면
+    entity_id: !input toilet_light
+    to: "off"
+    for:
+      minutes: !input fan_off_time_min
+    id: offTimeMin
+  - platform: state # 등 끄고 최대 시간 지마면
+    entity_id: !input toilet_light
+    to: "off"
+    for:
+      minutes: !input fan_off_time_max
+    id: offTimeMax
+  - platform: state # 습도변화
+    entity_id: !input humidity_in
+    id: changHumidtyIn
+  - platform: state # 습도변화
+    entity_id: !input humidity_out
+    id: changHumidtyOut
+  - platform: time_pattern # 1분 마다
+    minutes: /1
+    id: timePattern
+
+variables:
+  toilet_fan: !input toilet_fan
+  toilet_light: !input toilet_light
+  humidity_in: !input humidity_in
+  humidity_out: !input humidity_out
+  fan_on_humidity: !input fan_on_humidity
+  fan_off_humidity: !input fan_off_humidity
+  trigger_over_humidity: !input trigger_over_humidity
+  fan_off_time_max: !input fan_off_time_max
+  fan_off_time_min: !input fan_off_time_min
+  fan_off_time_min_if: !input fan_off_time_min_if
+  fan_auto_on_time_after: !input fan_auto_on_time_after
+  fan_auto_on_time_before: !input fan_auto_on_time_before
+
+action:
+  - choose:
+      # 등 켜면, 환풍기 켜기 (팬이 꺼져있을때)
+      - conditions:
+          - condition: trigger
+            id: lightOn
+          - condition: state
+            entity_id: !input toilet_fan
+            state: "off"
+        sequence:
+          - service: fan.turn_on
+            target:
+              entity_id: !input toilet_fan
+
+      # 등 끄면, 환풍기 끄기 (팬이 켜져있고, 최소습도 이하 거나 외부습도차보다 낮을때, 최소시간0)
+      - conditions:
+          - condition: trigger
+            id: lightOff
+          - condition: state
+            entity_id: !input toilet_fan
+            state: "on"
+          - condition: template # 최소습도 이하 거나 외부습도차보다 낮을때
+            value_template: "{{ float(states[humidity_in].state) < trigger_over_humidity or float(states[humidity_in].state) - float(states[humidity_out].state) <= fan_off_humidity }}"
+          - condition: template # 최소가동시간이0 이거나, 팬 최소가동 조건 시간 보나 작을때
+            value_template: "{{ fan_off_time_min == 0 or ( now().timestamp() - trigger.from_state.last_changed.timestamp() ) / 60 < fan_off_time_min_if }}"
+        sequence:
+          - service: fan.turn_off
+            target:
+              entity_id: !input toilet_fan
+
+      # 등 끄고 환풍기 최소 가동 시간 경과시, 환풍기 끄기 (팬이 켜져있고, 최소시간이 0보다 크면 )
+      - conditions:
+          - condition: trigger
+            id: offTimeMin
+          - condition: state
+            entity_id: !input toilet_fan
+            state: "on"
+          - condition: template
+            value_template: "{{ float(states[humidity_in].state) < trigger_over_humidity or float(states[humidity_in].state) - float(states[humidity_out].state) <= fan_off_humidity }}"
+          - condition: template
+            value_template: "{{ fan_off_time_min > 0 }}"
+        sequence:
+          - service: fan.turn_off
+            target:
+              entity_id: !input toilet_fan
+
+      # 등끄고 환풍기 최대 가동 시간 경과시, 환풍기 끄기 (팬이 켜져있고, 최대시간이 0보다 크면 )
+      - conditions:
+          - condition: trigger
+            id: offTimeMax
+          - condition: state
+            entity_id: !input toilet_fan
+            state: "on"
+          - condition: template
+            value_template: "{{ fan_off_time_max > 0 }}"
+        sequence:
+          - service: fan.turn_off
+            target:
+              entity_id: !input toilet_fan
+
+      # 1분 마다, 습도변화
+      - conditions:
+          - condition: trigger
+            id:
+              - timePattern
+              - changHumidtyIn
+              - changHumidtyOut
+        sequence:
+          - choose:
+              # 환풍기 켜기 (팬이 꺼져있고, 최소습도 이상이고 외부습도보다 높고)
+              - conditions:
+                  - condition: state
+                    entity_id: !input toilet_fan
+                    state: "off"
+                  - condition: template
+                    value_template: "{{ float(states[humidity_in].state) >= trigger_over_humidity }}"
+                  - condition: template
+                    value_template: "{{ float(states[humidity_in].state) - float(states[humidity_out].state) >= fan_on_humidity }}"
+                  - condition: template
+                    value_template: "{{ fan_off_time_max == 0 }}"
+                  - condition: template
+                    value_template: "{{ today_at(fan_auto_on_time_after) <= now() and today_at(fan_auto_on_time_before) >= now() }}"
+                sequence:
+                  - service: fan.turn_on
+                    target:
+                      entity_id: !input toilet_fan
+
+              # 환풍기 끄기 (팬이 켜져있고, 등이 꺼져있고, 최대가동시간이 만족이면)
+              - conditions:
+                  - condition: state
+                    entity_id: !input toilet_fan
+                    state: "on"
+                  - condition: state
+                    entity_id: !input toilet_light
+                    state: "off"
+                  - condition: template
+                    value_template: "{{ fan_off_time_max > 0 and ( now().timestamp() - states[toilet_fan].last_changed.timestamp() ) / 60 >= fan_off_time_max }}"
+                sequence:
+                  - service: fan.turn_off
+                    target:
+                      entity_id: !input toilet_fan
+
+              # 환풍기 끄기 (팬이 켜져있고, 등이 꺼져있고, 외부습도보다 낮고, 최소가동시간이 0일때 혹은 팬 켠시간이 조건 이하이면)
+              - conditions:
+                  - condition: state
+                    entity_id: !input toilet_fan
+                    state: "on"
+                  - condition: state
+                    entity_id: !input toilet_light
+                    state: "off"
+                  - condition: template
+                    value_template: "{{ float(states[humidity_in].state) - float(states[humidity_out].state) <= fan_off_humidity }}"
+                  - condition: template
+                    value_template: "{{ fan_off_time_min == 0 or ( states[toilet_light].last_changed.timestamp() - states[toilet_fan].last_changed.timestamp() ) / 60 <= fan_off_time_min_if }}"
+                sequence:
+                  - service: fan.turn_off
+                    target:
+                      entity_id: !input toilet_fan
+
+              # 환풍기 끄기 (팬이 켜져있고, 등이 꺼져있고, 외부습도보다 낮고, 최소가동시간 보다 더 가동되었을때 )
+              - conditions:
+                  - condition: state
+                    entity_id: !input toilet_fan
+                    state: "on"
+                  - condition: state
+                    entity_id: !input toilet_light
+                    state: "off"
+                  - condition: template
+                    value_template: "{{ float(states[humidity_in].state) - float(states[humidity_out].state) <= fan_off_humidity }}"
+                  - condition: template
+                    value_template: "{{ ( now().timestamp() - states[toilet_light].last_changed.timestamp() ) / 60 >= fan_off_time_min }}"
+                sequence:
+                  - service: fan.turn_off
+                    target:
+                      entity_id: !input toilet_fan
+            default: []
+    default: []
+mode: queued
+max_exceeded: silent

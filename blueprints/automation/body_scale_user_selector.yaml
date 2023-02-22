@@ -1,0 +1,110 @@
+blueprint:
+  domain: automation
+  name: "Body Scale User Selector"
+  description:
+    "측정된 체중을 비슷한 체중의 사용자로 선택해 업데이트 해 줍니다.\n
+    v1.1\n
+    -----------------------------------------\n
+    input_number 사용자 센서 생성 규칙.\n
+    - 사용자 체중 센서명에는 weight가 들어가야 합니다.\n
+    - 초기 체중은 직접입력 해주어야 합니다.\n
+    - `input_number.guest_weight`과 같이 센서명에 `guest`가 들어간 손님용도 만들어야 합니다.\n
+    - impedance를 사용하려면, 센서명을\n
+    체중센서명에서 `weight`을 `impedance`로 치환 해 만들어야 합니다.\n
+    예 : `input_number.userxxx_weight` -> `input_number.userxxx_impedance`"
+
+  input:
+    weight_entity:
+      name: weight sensor
+      description: "체중 센서"
+      selector:
+        entity:
+          domain: sensor
+          # device_class: weight
+
+    impedance_entity:
+      name: impedance sensor (option)
+      description: "인피던스 센서 (선택사항)"
+      selector:
+        entity:
+          domain: sensor
+
+    user_entities:
+      name: input_number Weight User entities
+      description: "생성한 사용자 체중을 선택 해 주세요.\n손님 체중도 선택 해야 합니다."
+      selector:
+        target:
+          entity:
+            domain: input_number
+
+    weight_distinction:
+      name: weight distinction
+      description: "사용사 선택 기준의 몸무게 오차율\n오차이내의 사용자가 없으면 손님으로 인식됩니다."
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 10
+          step: 0.1
+          unit_of_measurement: "%"
+
+    min_weight:
+      name: min weight
+      description: "인식 최소 체중."
+      default: 20
+      selector:
+        number:
+          min: 10
+          max: 40
+          step: 1
+          unit_of_measurement: "kg"
+
+trigger:
+  - platform: state
+    entity_id: !input weight_entity
+
+variables:
+  weight_entity: !input weight_entity
+  weight: "{{ states(weight_entity)|float }}"
+  impedance_entity: !input impedance_entity
+  user_entities: !input user_entities
+  weight_distinction: !input weight_distinction
+  min_weight: !input min_weight
+  user_weight_entity: >-
+    {% set r = namespace(user='') %}
+    {% set r.dist = 1 %}
+    {% for user_entity in user_entities.entity_id %}
+      {% set dist = (states(user_entity)|float / weight - 1)|abs %}
+      {% if 'guest' in user_entity and r.user == '' %}
+        {% set r.user = user_entity %}
+      {% elif dist < weight_distinction / 100 and r.dist > dist %}
+        {% set r.user = user_entity %}
+        {% set r.dist = dist %}
+      {% endif %}
+    {% endfor %}
+    {{ r.user }}
+  user_impedance_entity: '{{ user_weight_entity.replace("weight","impedance") }}'
+
+condition:
+  - condition: numeric_state
+    entity_id: !input weight_entity
+    above: !input min_weight
+
+action:
+  - service: input_number.set_value
+    target:
+      entity_id: "{{user_weight_entity}}"
+    data:
+      value: "{{ trigger.to_state.state }}"
+
+  - if:
+      - condition: template
+        value_template: '{{ impedance_entity != "" }}'
+    then:
+      - service: input_number.set_value
+        target:
+          entity_id: "{{user_impedance_entity}}"
+        data:
+          value: "{{ states(impedance_entity) }}"
+
+mode: parallel

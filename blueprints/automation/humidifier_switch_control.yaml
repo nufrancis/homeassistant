@@ -1,0 +1,144 @@
+blueprint:
+  name: "가습기 스위치 제어"
+  description: "v1.2"
+  domain: automation
+
+  input:
+    humidity_switch:
+      name: "가습기 스위치"
+      description: "switch 또는 humidifier 선택"
+      selector:
+        entity:
+          domain:
+            - switch
+            - humidifier
+    humidity_sensor:
+      name: "습도 센서"
+      description: ""
+      selector:
+        entity:
+          domain: sensor
+          device_class: humidity
+    day_humidity_on:
+      name: "낮에 켜기 습도"
+      description: "낮 시간에 설정 습도 이하면 스위치를 켭니다"
+      default: 47
+      selector:
+        number:
+          min: 40
+          max: 70
+          unit_of_measurement: "%"
+    day_humidity_off:
+      name: "낮에 끄기 습도"
+      description: "낮 시간에 설정 습도 이상이면 스위치를 끕니다"
+      default: 52
+      selector:
+        number:
+          min: 40
+          max: 70
+          unit_of_measurement: "%"
+    night_humidity_on:
+      name: "밤에 켜기 습도"
+      description: "밤 시간에 설정 습도 이하면 스위치를 켭니다"
+      default: 52
+      selector:
+        number:
+          min: 40
+          max: 70
+          unit_of_measurement: "%"
+    night_humidity_off:
+      name: "밤에 끄기 습도"
+      description: "밤 시간에 설정 습도 이상이면 스위치를 끕니다"
+      default: 57
+      selector:
+        number:
+          min: 40
+          max: 70
+          unit_of_measurement: "%"
+    day_time_after:
+      name: "낮 시작 시간"
+      description: "부터"
+      default: "8:00:00"
+      selector:
+        time:
+    day_time_before:
+      name: "낮 끝 시간"
+      description: "까지"
+      default: "21:00:00"
+      selector:
+        time:
+
+trigger:
+  - platform: homeassistant
+    event: start
+  - platform: time
+    at: !input day_time_after
+  - platform: time
+    at: !input day_time_before
+  - platform: state
+    entity_id: !input humidity_sensor
+
+variables:
+  humidity_switch: !input humidity_switch
+  switch_domain: "{{ humidity_switch.split('.')[0] }}"
+
+action:
+  - if:
+      - condition: time
+        after: !input day_time_after
+        before: !input day_time_before
+    then:
+      - choose:
+          - conditions:
+              - condition: numeric_state
+                entity_id: !input humidity_sensor
+                above: !input day_humidity_off
+              - condition: state
+                state: "on"
+                entity_id: !input humidity_switch
+            sequence:
+              - service: "{{switch_domain}}.turn_off"
+                data: {}
+                target:
+                  entity_id: !input humidity_switch
+          - conditions:
+              - condition: numeric_state
+                entity_id: !input humidity_sensor
+                below: !input day_humidity_on
+              - condition: state
+                state: "off"
+                entity_id: !input humidity_switch
+            sequence:
+              - service: "{{switch_domain}}.turn_on"
+                data: {}
+                target:
+                  entity_id: !input humidity_switch
+        default: []
+    else:
+      - choose:
+          - conditions:
+              - condition: numeric_state
+                entity_id: !input humidity_sensor
+                above: !input night_humidity_off
+              - condition: state
+                entity_id: !input humidity_switch
+                state: "on"
+            sequence:
+              - service: "{{switch_domain}}.turn_off"
+                data: {}
+                target:
+                  entity_id: !input humidity_switch
+          - conditions:
+              - condition: numeric_state
+                entity_id: !input humidity_sensor
+                below: !input night_humidity_on
+              - condition: state
+                state: "off"
+                entity_id: !input humidity_switch
+            sequence:
+              - service: "{{switch_domain}}.turn_on"
+                data: {}
+                target:
+                  entity_id: !input humidity_switch
+        default: []
+mode: single

@@ -1,0 +1,86 @@
+blueprint:
+  name: 미세먼지 상태 표시등
+  description: 미세먼지 상태를 등의 색깔로 표시해 줍니다.
+    색상 상태는 blue=좋음, green=보통, orange=나쁨, red=매우나쁨 입니다.
+    시간에 따라 등의 밝기가 조절됩니다.
+  domain: automation
+  # source_url: https://github.com/home-assistant/core/blob/dev/homeassistant/components/automation/blueprints/motion_light.yaml
+  input:
+    sensor_finedustgrade:
+      name: 미세먼지 상태 센서
+      description: '상태 값은 "좋음,보통,나쁨,매우나쁨" 이어야 합니다.'
+      selector:
+        entity:
+          domain: sensor
+    sensor_ultrafinedustgrade:
+      name: 초미세먼지 상태 센서
+      description: '상태 값은 "좋음,보통,나쁨,매우나쁨" 이어야 합니다.'
+      selector:
+        entity:
+          domain: sensor
+    light_target:
+      name: 상태표시등
+      description: 상태를 표시 해 줄 칼라 라이트를 선택 해 주세요.
+      selector:
+        target:
+          entity:
+            domain: light
+    light_max_brightness:
+      name: 상태등의 최대 밝기
+      description: 상태등의 최대 밝기를 설정 합니다.
+      default: 70
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+    light_min_brightness:
+      name: 상태등의 최소 밝기
+      description: 상태등의 최소 밝기를 설정 합니다.
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+
+trigger:
+  - platform: homeassistant
+    event: start
+  - platform: time_pattern
+    minutes: /30
+  - platform: state
+    entity_id: !input sensor_finedustgrade
+  - platform: state
+    entity_id: !input sensor_ultrafinedustgrade
+
+variables:
+  sensor_finedustgrade: !input sensor_finedustgrade
+  sensor_ultrafinedustgrade: !input sensor_ultrafinedustgrade
+  light_max_brightness: !input light_max_brightness
+  light_min_brightness: !input light_min_brightness
+
+action:
+  - alias: "Turn on the light"
+    service: light.turn_on
+    target: !input light_target
+    data:
+      color_name: >
+        {% set state_step = {"매우나쁨":3,"나쁨":2,"보통":1,"좋음":0} %}
+        {% set state_color = ["blue","green","orange","red"] %}
+        {% set fdg = state_step[states[sensor_finedustgrade].state] %}
+        {% set ufdg = state_step[states[sensor_ultrafinedustgrade].state] %}
+        {% if (fdg > ufdg) %}
+          {{state_color[fdg]}}
+        {% else %}
+          {{state_color[ufdg]}}
+        {% endif %}
+      brightness_pct: >
+        {% set elevation = 20 + (state_attr('sun.sun','elevation')|int *2) %}
+        {% if elevation >= light_max_brightness %}
+          {{ light_max_brightness }}
+        {% elif elevation <= light_min_brightness %}
+          {{ light_min_brightness }}
+        {% else %}
+          {{ elevation }}
+        {% endif %}
